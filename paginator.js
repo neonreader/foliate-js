@@ -158,10 +158,12 @@ const setSelectionTo = (target, collapse) => {
     }
     if (range) {
         const sel = range.startContainer.ownerDocument.defaultView.getSelection()
-        sel.removeAllRanges()
-        if (collapse === -1) range.collapse(true)
-        else if (collapse === 1) range.collapse()
-        sel.addRange(range)
+        if (sel) {
+            sel.removeAllRanges()
+            if (collapse === -1) range.collapse(true)
+            else if (collapse === 1) range.collapse()
+            sel.addRange(range)
+        }
     }
 }
 
@@ -574,6 +576,7 @@ export class Paginator extends HTMLElement {
             }
         })
         const checkPointerSelection = debounce((range, sel) => {
+            if (!sel.rangeCount) return
             const selRange = sel.getRangeAt(0)
             const backward = selectionIsBackward(sel)
             if (backward && selRange.compareBoundaryPoints(Range.START_TO_START, range) < 0)
@@ -635,6 +638,22 @@ export class Paginator extends HTMLElement {
     open(book) {
         this.bookDir = book.dir
         this.sections = book.sections
+        book.transformTarget?.addEventListener('data', ({ detail }) => {
+            if (detail.type !== 'text/css') return
+            const w = innerWidth
+            const h = innerHeight
+            detail.data = Promise.resolve(detail.data).then(data => data
+                // unprefix as most of the props are (only) supported unprefixed
+                .replace(/(?<=[{\s;])-epub-/gi, '')
+                // replace vw and vh as they cause problems with layout
+                .replace(/(\d*\.?\d+)vw/gi, (_, d) => parseFloat(d) * w / 100 + 'px')
+                .replace(/(\d*\.?\d+)vh/gi, (_, d) => parseFloat(d) * h / 100 + 'px')
+                // `page-break-*` unsupported in columns; replace with `column-break-*`
+                .replace(/page-break-(after|before|inside)\s*:/gi, (_, x) =>
+                    `-webkit-column-break-${x}:`)
+                .replace(/break-(after|before|inside)\s*:\s*(avoid-)?page/gi, (_, x, y) =>
+                    `break-${x}: ${y ?? ''}column`))
+        })
     }
     #createView() {
         if (this.#view) {
